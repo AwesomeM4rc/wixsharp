@@ -236,10 +236,12 @@ namespace WixSharp
             int retValue = -1;
 
             int apply(string url)
-                => CommonTasks.Tasks.DigitallySign(filesToSign, CertificateId, TimeUrl?.AbsoluteUri, Password,
+                => CommonTasks.Tasks.DigitallySign(filesToSign, CertificateId, url, Password,
                                                    PrepareOptionalArguments(), CertificateStore, OutputLevel, HashAlgorithm);
 
             Compiler.OutputWriteLine($"Signing {filesToSign.JoinBy(", ")} with DigitalSignature."); // full path will be printed by the signing tool
+
+            int attemptsLeft = TimeUrls.Count * MaxTimeUrlRetry;
 
             if (TimeUrls.Any())
                 foreach (Uri uri in TimeUrls)
@@ -247,7 +249,8 @@ namespace WixSharp
                     for (int i = 0; i < MaxTimeUrlRetry && retValue != 0; i++)
                     {
                         retValue = apply(uri?.AbsoluteUri);
-                        if (retValue != 0)
+                        attemptsLeft--;
+                        if (retValue != 0 && attemptsLeft > 0)
                         {
                             Compiler.OutputWriteLine($"Retrying applying DigitalSignature for {uri?.AbsoluteUri}.");
                             Thread.Sleep(UrlRetrySleep);
@@ -282,10 +285,12 @@ namespace WixSharp
             int retValue = -1;
 
             int apply(string url)
-                => CommonTasks.Tasks.DigitallySign(fileToSign, CertificateId, TimeUrl?.AbsoluteUri, Password,
+                => CommonTasks.Tasks.DigitallySign(fileToSign, CertificateId, url, Password,
                                                    PrepareOptionalArguments(), CertificateStore, OutputLevel, HashAlgorithm);
 
             Compiler.OutputWriteLine($"Signing {fileToSign} with DigitalSignature."); // full path will be printed by the signing tool
+
+            int attemptsLeft = TimeUrls.Count * MaxTimeUrlRetry;
 
             if (TimeUrls.Any())
                 foreach (Uri uri in TimeUrls)
@@ -293,7 +298,8 @@ namespace WixSharp
                     for (int i = 0; i < MaxTimeUrlRetry && retValue != 0; i++)
                     {
                         retValue = apply(uri?.AbsoluteUri);
-                        if (retValue != 0)
+                        attemptsLeft--;
+                        if (retValue != 0 && attemptsLeft > 0)
                         {
                             Compiler.OutputWriteLine($"Retrying applying DigitalSignature for {uri?.AbsoluteUri}.");
                             Thread.Sleep(UrlRetrySleep);
