@@ -81,17 +81,29 @@ namespace WixSharp
         /// </summary>
         /// <param name="filesToSign">The files to sign.</param>
         /// <returns></returns>
-        public int Sign(string[] filesToSign) => SignImplementation(filesToSign);
+        public int Sign(string[] filesToSign)
+        {
+            if (SignImplementation != null)
+                return SignImplementation(filesToSign);
+
+            // no batch implementation: sign the files one by one (as without PreferBatchSigning)
+            int retValue = 0;
+            foreach (var file in filesToSign)
+            {
+                var fileRetValue = Apply(file);
+                if (retValue == 0)
+                    retValue = fileRetValue;
+            }
+            return retValue;
+        }
 
         /// <summary>
         /// The delegate used to sign file set. Invoked by <see cref="GenericSigner.Sign(string[])"/>. This is a convenient method to inject
         /// the implementation (e.g. lambda) instead of creating an inherited class.
         /// </summary>
-        /// <remarks>Initialize this field with the appropriate signing routine before invoking it. The
-        /// default delegate throws a <see cref="NotImplementedException"/>.</remarks>
-        public Func<string[], int> SignImplementation =
-            x => throw new NotImplementedException(
-                "You need to initialize <see cref=\"GenericSigner.SignImplementation\"/> with the appropriate signing routine (delegate).");
+        /// <remarks>This field is optional. If it is not set, <see cref="GenericSigner.Sign(string[])"/> signs the files
+        /// one by one with <see cref="GenericSigner.ApplyImplementation"/> and returns the first non-zero exit code.</remarks>
+        public Func<string[], int> SignImplementation;
     }
 
     /// <summary>
