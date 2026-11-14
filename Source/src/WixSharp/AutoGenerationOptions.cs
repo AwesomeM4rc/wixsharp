@@ -97,6 +97,15 @@ namespace WixSharp
         public bool PreferBatchSigning = false;
 
         /// <summary>
+        /// Controls whether a failed digital signature (non-zero exit code of the signing tool) fails the build.
+        /// <para>It applies to the signing of the project files (<see cref="Project.SignAllFiles"/>), the embedded assemblies,
+        /// the MSI and the bundle. For the project files the failure is reported to
+        /// <see cref="SignAllFilesOptions.ExceptionHandler"/> as <see cref="InvalidOperationException"/>.</para>
+        /// <para>If disabled (default), a failed signature is only reported as a warning in the build output.</para>
+        /// </summary>
+        public bool FailOnSigningError = false;
+
+        /// <summary>
         /// Forces the WXS to be thread-safe. Default value is <c>false</c>.
         /// <para>
         /// If this field is useful when WixShar accesses some shared resources during WXS generation.

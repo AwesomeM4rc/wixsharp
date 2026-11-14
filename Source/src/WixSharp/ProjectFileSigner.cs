@@ -42,6 +42,8 @@ namespace WixSharp
         /// Determines the behavior when an exception occurs during the signing of a specific file.
         /// <para>For example, <see cref="ExceptionHandler"/> can be used to skip and continue the process in DEBUG mode
         /// when it is not critical that all files are signed successfully.</para>
+        /// <para>If <see cref="AutoGenerationOptions.FailOnSigningError"/> is enabled, a non-zero exit code of the signing
+        /// tool is reported as <see cref="InvalidOperationException"/>. The default handler rethrows the exception and fails the build.</para>
         /// </summary>
         public Action<string, Exception> ExceptionHandler { get; set; } = (file, ex) => throw ex;
     }
@@ -112,18 +114,59 @@ namespace WixSharp
                 }
             }
 
-            if (actualFilesToSign.Any())
+            SignFiles(project.DigitalSignature, actualFilesToSign, options);
+        }
+
+        /// <summary>
+        /// Signs the files with the signature, as a batch if <see cref="AutoGenerationOptions.PreferBatchSigning"/> is enabled
+        /// and the signature is an <see cref="ISigningTool"/>, otherwise one by one.
+        /// <para>A non-zero exit code of the signing tool is handled according to <see cref="AutoGenerationOptions.FailOnSigningError"/>.</para>
+        /// </summary>
+        /// <param name="signature">The signature to apply.</param>
+        /// <param name="files">The files to sign.</param>
+        /// <param name="options">The signing options.</param>
+        internal static void SignFiles(IDigitalSignature signature, IList<string> files, SignAllFilesOptions options)
+        {
+            if (signature == null || !files.Any())
+                return;
+
+            if (signature is ISigningTool && WixSharp.Compiler.AutoGeneration.PreferBatchSigning)
             {
-                if (project.DigitalSignature is ISigningTool && WixSharp.Compiler.AutoGeneration.PreferBatchSigning)
-                {
-                    (project.DigitalSignature as ISigningTool).Sign(actualFilesToSign.ToArray());
-                }
-                else
-                {
-                    foreach (var file in actualFilesToSign)
-                        project.DigitalSignature.Apply(file);
-                }
+                var retValue = (signature as ISigningTool).Sign(files.ToArray());
+                CheckSigningResult(files.Count == 1 ? files[0] : $"{files.Count} files", retValue, options);
             }
+            else
+            {
+                foreach (var file in files)
+                    CheckSigningResult(file, signature.Apply(file), options);
+            }
+        }
+
+        /// <summary>
+        /// Checks the exit code of the signing tool. A non-zero exit code is reported as a warning, or as
+        /// <see cref="InvalidOperationException"/> if <see cref="AutoGenerationOptions.FailOnSigningError"/> is enabled.
+        /// </summary>
+        /// <param name="file">The file (or the description of the file set) that was signed.</param>
+        /// <param name="retValue">The exit code of the signing tool.</param>
+        /// <param name="options">The signing options with the <see cref="SignAllFilesOptions.ExceptionHandler"/> receiving
+        /// the exception. If <c>null</c> (signing the build output, e.g. the msi file), the exception is thrown.</param>
+        internal static void CheckSigningResult(string file, int retValue, SignAllFilesOptions options = null)
+        {
+            if (retValue == 0)
+                return;
+
+            if (!WixSharp.Compiler.AutoGeneration.FailOnSigningError)
+            {
+                Compiler.OutputWriteLine($"WARNING: Signing {file} failed. Return code: {retValue}");
+                return;
+            }
+
+            var error = new InvalidOperationException($"Signing the file '{file}' failed. Return code: {retValue}");
+
+            if (options == null)
+                throw error;
+
+            options.ExceptionHandler?.Invoke(file, error);
         }
     }
 }

@@ -800,7 +800,8 @@ namespace WixSharp
                     }
 #pragma warning restore CS0618 // Type or member is obsolete
 
-                    project.DigitalSignature?.Apply(outFile);
+                    if (project.DigitalSignature != null)
+                        ProjectFileSigner.CheckSigningResult(outFile, project.DigitalSignature.Apply(outFile));
                 }
 
 
@@ -3436,18 +3437,7 @@ namespace WixSharp
                     actualFilesToSign.Add(file);
                 }
 
-                if (actualFilesToSign.Any())
-                {
-                    if (signing is ISigningTool && WixSharp.Compiler.AutoGeneration.PreferBatchSigning)
-                    {
-                        (signing as ISigningTool).Sign(actualFilesToSign.ToArray());
-                    }
-                    else
-                    {
-                        foreach (var file in actualFilesToSign)
-                            signing.Apply(file);
-                    }
-                }
+                ProjectFileSigner.SignFiles(signing, actualFilesToSign, Compiler.SignAllFilesOptions);
             }
 
             var configFile = outDir.PathCombine(embeddedUI ? "EmbeddedUI.config" : "CustomAction.config");

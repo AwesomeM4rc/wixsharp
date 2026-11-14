@@ -132,7 +132,8 @@ namespace WixSharp
                     Compiler.OutputWriteLine(" Version    : " + project.Version);
                     Compiler.OutputWriteLine(" UpgradeCode: {" + project.UpgradeCode + "}\n");
 
-                    project.DigitalSignature?.Apply(outFile);
+                    if (project.DigitalSignature != null)
+                        ProjectFileSigner.CheckSigningResult(outFile, project.DigitalSignature.Apply(outFile));
                 }
                 else
                 {
