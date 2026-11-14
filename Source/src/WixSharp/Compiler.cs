@@ -3504,6 +3504,11 @@ namespace WixSharp
                     throw new ApplicationException("Cannot package ManagedCA assembly(" + asm + ")" + (Compiler.VerboseOutput ? $"\n{output}" : ""));
 
                 Compiler.TempFiles.Add(outDll);
+
+                // The package is a native DLL that msiexec extracts to a temp file and loads, so it needs its own signature
+                // (e.g. for Smart App Control). It can only be signed here, before it gets embedded into the MSI.
+                if (signing != null && Compiler.SignAllFilesOptions.SignEmbeddedAssemblies)
+                    ProjectFileSigner.SignFiles(signing, new[] { outDll }, Compiler.SignAllFilesOptions);
             }
             else
             {
