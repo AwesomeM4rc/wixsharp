@@ -169,5 +169,63 @@ namespace WixSharp
 
             options.ExceptionHandler?.Invoke(file, error);
         }
+
+        /// <summary>
+        /// Signs the payload files that are not signed yet (see <see cref="SignAllFilesOptions"/>). The files are signed as
+        /// copies in the WixSharp build directory, so the original files stay untouched (they can be locked by the running
+        /// builder or belong to a package cache).
+        /// </summary>
+        /// <param name="signature">The signature to apply.</param>
+        /// <param name="files">The files to sign.</param>
+        /// <param name="options">The signing options.</param>
+        /// <returns>The map of the original file paths to the paths of the signed copies.</returns>
+        internal static Dictionary<string, string> SignCopiesOf(IDigitalSignature signature, IEnumerable<string> files, SignAllFilesOptions options)
+        {
+            var signedCopies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var signedDir = Utils.WixsharpBuildDir.PathCombine("signed").EnsureDirExists();
+
+            // files with the same name can come from different folders (e.g. satellite assemblies),
+            // so every source folder gets its own subfolder
+            var sourceDirs = new List<string>();
+
+            foreach (var file in files.Where(x => x.IsNotEmpty()).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var fullPath = IO.Path.GetFullPath(file);
+                    if (!IO.File.Exists(fullPath) || fullPath.StartsWith(signedDir, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var fileExt = Path.GetExtension(fullPath).ToLower();
+                    var fileFormat = fileExt.TrimStart('.');
+
+                    if (!options.SupportedFileFormats.Any(x => x.IsOneOf(fileExt, fileFormat)))
+                        continue;
+
+                    if (options.SkipSignedFiles && VerifyFileSignature.IsSigned(fullPath))
+                        continue;
+
+                    var sourceDir = fullPath.PathGetDirName();
+                    var index = sourceDirs.FindIndex(x => x.SamePathAs(sourceDir));
+                    if (index == -1)
+                    {
+                        sourceDirs.Add(sourceDir);
+                        index = sourceDirs.Count - 1;
+                    }
+
+                    var copy = signedDir.PathCombine(index.ToString()).EnsureDirExists().PathCombine(fullPath.PathGetFileName());
+                    IO.File.Copy(fullPath, copy, true);
+                    signedCopies[file] = copy;
+                }
+                catch (Exception ex)
+                {
+                    options.ExceptionHandler?.Invoke(file, ex);
+                }
+            }
+
+            SignFiles(signature, signedCopies.Values.ToList(), options);
+
+            return signedCopies;
+        }
     }
 }

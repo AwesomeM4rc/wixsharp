@@ -140,6 +140,39 @@ namespace WixSharp.Bootstrapper
         public IDigitalSignature DigitalSignature;
 
         /// <summary>
+        /// Controls whether the files of the managed bootstrapper application (the BA assembly, its dependencies and the
+        /// WiX/WixSharp runtime assemblies) are signed with <see cref="DigitalSignature"/> before they are embedded into the bundle.
+        /// Burn extracts these files to a temporary folder and loads them, so policies like Smart App Control check their signatures.
+        /// <para>Supported file formats and the handling of already signed files are configured with
+        /// <see cref="Compiler.SignAllFilesOptions"/>. The files are signed as copies, so the original files stay untouched.</para>
+        /// <para>The default value is <c>false</c>.</para>
+        /// </summary>
+        public bool SignApplicationFiles;
+
+        /// <summary>
+        /// Gets the digital signature for signing the bootstrapper application files (<see cref="SignApplicationFiles"/>).
+        /// A <see cref="DigitalSignatureBootstrapper"/> signs bundles (detaching the Burn engine), so its plain file
+        /// signing is used for the application files.
+        /// </summary>
+        internal IDigitalSignature ApplicationFilesSignature
+        {
+            get
+            {
+                if (!SignApplicationFiles || DigitalSignature == null)
+                    return null;
+
+                if (DigitalSignature is DigitalSignatureBootstrapper bootstrapperSignature)
+                    return new GenericSigner
+                    {
+                        ApplyImplementation = file => bootstrapperSignature.Sign(new[] { file }),
+                        SignImplementation = bootstrapperSignature.Sign
+                    };
+
+                return DigitalSignature;
+            }
+        }
+
+        /// <summary>
         /// Determines whether the bundle can be removed via the Programs and Features (also known as Add/Remove Programs). If the value is
         /// "yes" then the "Uninstall" button will not be displayed. The default is "no" which ensures there is an "Uninstall" button to remove
         /// the bundle. If the "DisableModify" attribute is also "yes" or "button" then the bundle will not be displayed in Programs and
@@ -306,6 +339,11 @@ namespace WixSharp.Bootstrapper
 
             //important to call AutoGenerateSources after PrimaryPackageId is set
             Application.AutoGenerateSources(this.OutDir);
+
+            if (Application is ManagedBootstrapperApplication managedApp)
+                managedApp.PayloadSignature = ApplicationFilesSignature;
+            else if (SignApplicationFiles)
+                Compiler.OutputWriteLine("WARNING: SignApplicationFiles is only supported for ManagedBootstrapperApplication.");
 
             root.Add(Application.ToXml());
 

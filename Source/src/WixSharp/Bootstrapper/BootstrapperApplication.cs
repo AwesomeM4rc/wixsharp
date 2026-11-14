@@ -32,6 +32,12 @@ namespace WixSharp.Bootstrapper
         string bootstrapperCoreConfig = "";
 
         /// <summary>
+        /// The signature for the application payloads (see <see cref="Bundle.SignApplicationFiles"/>). Set by the bundle before
+        /// <see cref="ToXml"/> is called.
+        /// </summary>
+        internal IDigitalSignature PayloadSignature;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="ManagedBootstrapperApplication"/> class.
         /// </summary>
         /// <param name="appAssembly">The application assembly.</param>
@@ -229,6 +235,35 @@ namespace WixSharp.Bootstrapper
                     files.Add(item.ToPayload());
             }
 
+            // validate payloads
+            var wixBaDependency = "WixToolset.Mba.Core.dll";
+
+            if (WixTools.GlobalWixVersion.Major >= 5)
+                wixBaDependency = "WixToolset.BootstrapperApplicationApi.dll";
+
+            if (!files.Any(x => x.SourceFile.EndsWith(wixBaDependency)))
+            {
+                var possibleMbaCore = LocateMbaCore(wixBaDependency);
+
+                if (!possibleMbaCore.PathExists())
+                    possibleMbaCore = this.AppAssembly.PathChangeFileName(wixBaDependency);
+
+                if (possibleMbaCore.PathExists())
+                    files.Add(new Payload(possibleMbaCore));
+                else
+                    Compiler.OutputWriteLine($"WARNING: Custom BA payloads are missing `{wixBaDependency}`");
+            }
+
+            // The payload list is complete only here (resolved BA assembly, WiX runtime assemblies), so this is the place to sign it.
+            if (PayloadSignature != null)
+            {
+                var signedCopies = ProjectFileSigner.SignCopiesOf(PayloadSignature, files.Select(x => x.SourceFile), Compiler.SignAllFilesOptions);
+
+                foreach (var payload in files)
+                    if (payload.SourceFile != null && signedCopies.ContainsKey(payload.SourceFile))
+                        payload.SourceFile = signedCopies[payload.SourceFile];
+            }
+
             // starting from WiX5 the BA assembly can no longer be a payload but the attribute of the BootstrapperApplication element.
             if (WixTools.GlobalWixVersion.Major >= 5)
             {
@@ -247,25 +282,6 @@ namespace WixSharp.Bootstrapper
 
             if (files.Any())
                 files.DistinctBy(x => x.SourceFile).ForEach(p => root.Add(p.ToXElement("Payload")));
-
-            // validate payloads
-            var wixBaDependency = "WixToolset.Mba.Core.dll";
-
-            if (WixTools.GlobalWixVersion.Major >= 5)
-                wixBaDependency = "WixToolset.BootstrapperApplicationApi.dll";
-
-            if (!files.Any(x => x.SourceFile.EndsWith(wixBaDependency)))
-            {
-                var possibleMbaCore = LocateMbaCore(wixBaDependency);
-
-                if (!possibleMbaCore.PathExists())
-                    possibleMbaCore = this.AppAssembly.PathChangeFileName(wixBaDependency);
-
-                if (possibleMbaCore.PathExists())
-                    root.Add(new Payload(possibleMbaCore).ToXElement("Payload"));
-                else
-                    Compiler.OutputWriteLine($"WARNING: Custom BA payloads are missing `{wixBaDependency}`");
-            }
 
             return new[] { root };
         }
